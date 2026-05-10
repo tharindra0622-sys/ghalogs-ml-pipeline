@@ -1,18 +1,4 @@
-"""
-fetch_data.py
-=============
-Downloads runs.json.gz from Zenodo and extracts the same 95 columns
-as runs_200_2.csv (the sample dataset). Saves to data/runs_200_2.csv
-so ml_pipeline.py works without any changes.
-
-Usage:
-    python fetch_data.py                # download full dataset (~1.1 GB)
-    python fetch_data.py --sample 5000  # use only first N rows (faster testing)
-    python fetch_data.py --skip-download # re-parse already-downloaded file
-"""
-
 import os
-import sys
 import gzip
 import json
 import argparse
@@ -24,7 +10,6 @@ ZENODO_URL = "https://zenodo.org/records/14796970/files/runs.json.gz?download=1"
 LOCAL_GZ   = "data/runs.json.gz"
 OUTPUT_CSV = "data/runs_200_2.csv"
 
-# Exact columns from the sample CSV (95 total) — keeps ml_pipeline.py unchanged
 KEEP_COLUMNS = [
     "_id", "repository_name", "workflow_path", "run_number", "run_attempt",
     "metadata_id", "metadata_name", "metadata_node_id", "metadata_head_branch",
@@ -68,20 +53,9 @@ KEEP_COLUMNS = [
     "log_shell_ratio", "log_avg_step_dur", "log_max_step_dur",
 ]
 
-
 def log(msg):
     ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
     print(f"[{ts}] {msg}", flush=True)
-
-
-def show_progress(count, total=None):
-    if count % 50_000 == 0:
-        if total:
-            pct = count / total * 100
-            log(f"  Parsed {count:,} / {total:,} rows ({pct:.1f}%)")
-        else:
-            log(f"  Parsed {count:,} rows ...")
-
 
 def download_file():
     os.makedirs("data", exist_ok=True)
@@ -89,39 +63,19 @@ def download_file():
         size_mb = os.path.getsize(LOCAL_GZ) / 1024 / 1024
         log(f"runs.json.gz already exists ({size_mb:.1f} MB) — skipping download.")
         return
-
-    log("Downloading runs.json.gz from Zenodo (~1.1 GB) ...")
-    log("This may take 5–15 minutes depending on your connection.")
-
-    downloaded = [0]
-    start_time = [datetime.now()]
-
+    log("Downloading runs.json.gz from Zenodo (~1.1 GB)...")
     def reporthook(block_num, block_size, total_size):
-        downloaded[0] += block_size
-        mb = downloaded[0] / 1024 / 1024
-        elapsed = (datetime.now() - start_time[0]).seconds or 1
-        speed = mb / elapsed
-        if block_num % 500 == 0:
+        mb = block_num * block_size / 1024 / 1024
+        if block_num % 1000 == 0:
             if total_size > 0:
-                pct = downloaded[0] / total_size * 100
-                print(f"\r  {mb:.1f} MB / {total_size/1024/1024:.1f} MB  ({pct:.1f}%)  {speed:.1f} MB/s   ", end="", flush=True)
-            else:
-                print(f"\r  {mb:.1f} MB downloaded  {speed:.1f} MB/s   ", end="", flush=True)
-
+                pct = block_num * block_size / total_size * 100
+                print(f"\r  {mb:.1f} MB / {total_size/1024/1024:.1f} MB ({pct:.1f}%)", end="", flush=True)
     urllib.request.urlretrieve(ZENODO_URL, LOCAL_GZ, reporthook)
     print()
-    size_mb = os.path.getsize(LOCAL_GZ) / 1024 / 1024
-    log(f"Download complete ({size_mb:.1f} MB)")
+    log("Download complete.")
 
-
-def flatten_record(record: dict) -> dict:
-    """
-    Flatten a nested JSON run record into a flat dict matching KEEP_COLUMNS.
-    The JSON structure nests metadata, logs, repository info inside sub-dicts.
-    """
+def flatten_record(record):
     flat = {}
-
-    # Top-level fields
     flat["_id"]               = record.get("_id", "")
     flat["repository_name"]   = record.get("repository_name", "")
     flat["workflow_path"]     = record.get("workflow_path", "")
@@ -130,7 +84,29 @@ def flatten_record(record: dict) -> dict:
     flat["logs_archive_path"] = record.get("logs_archive_path", "")
     flat["total_logs_size"]   = record.get("total_logs_size", None)
 
-    # metadata sub-dict
+    flat["log_num_jobs"]            = record.get("log_num_jobs", 0)
+    flat["log_total_steps"]         = record.get("log_total_steps", 0)
+    flat["log_total_duration_sec"]  = record.get("log_total_duration_sec", 0.0)
+    flat["log_shell_steps"]         = record.get("log_shell_steps", 0)
+    flat["log_action_steps"]        = record.get("log_action_steps", 0)
+    flat["log_error_steps"]         = record.get("log_error_steps", 0)
+    flat["log_total_lines"]         = record.get("log_total_lines", 0)
+    flat["log_has_linux"]           = int(record.get("log_has_linux", 0))
+    flat["log_has_macos"]           = int(record.get("log_has_macos", 0))
+    flat["log_has_windows"]         = int(record.get("log_has_windows", 0))
+    flat["log_num_os_types"]        = record.get("log_num_os_types", 0)
+    flat["log_early3_total_dur"]    = record.get("log_early3_total_dur", 0.0)
+    flat["log_early3_max_dur"]      = record.get("log_early3_max_dur", 0.0)
+    flat["log_early3_min_dur"]      = record.get("log_early3_min_dur", 0.0)
+    flat["log_early3_shell_count"]  = record.get("log_early3_shell_count", 0)
+    flat["log_early3_action_count"] = record.get("log_early3_action_count", 0)
+    flat["log_early3_error_count"]  = record.get("log_early3_error_count", 0)
+    flat["log_early3_avg_dur"]      = record.get("log_early3_avg_dur", 0.0)
+    flat["log_error_rate"]          = record.get("log_error_rate", 0.0)
+    flat["log_shell_ratio"]         = record.get("log_shell_ratio", 0.0)
+    flat["log_avg_step_dur"]        = record.get("log_avg_step_dur", 0.0)
+    flat["log_max_step_dur"]        = record.get("log_max_step_dur", 0.0)
+
     meta = record.get("metadata", {}) or {}
     flat["metadata_id"]               = meta.get("id", None)
     flat["metadata_name"]             = meta.get("name", "")
@@ -153,7 +129,6 @@ def flatten_record(record: dict) -> dict:
     flat["metadata_referenced_workflows"] = str(meta.get("referenced_workflows", []))
     flat["metadata_run_started_at"]   = meta.get("run_started_at", "")
 
-    # actor
     actor = meta.get("actor", {}) or {}
     flat["metadata_actor_login"]       = actor.get("login", "")
     flat["metadata_actor_id"]          = actor.get("id", None)
@@ -162,7 +137,6 @@ def flatten_record(record: dict) -> dict:
     flat["metadata_actor_type"]        = actor.get("type", "")
     flat["metadata_actor_site_admin"]  = actor.get("site_admin", False)
 
-    # triggering_actor
     ta = meta.get("triggering_actor", {}) or {}
     flat["metadata_triggering_actor_login"]       = ta.get("login", "")
     flat["metadata_triggering_actor_id"]          = ta.get("id", None)
@@ -171,29 +145,27 @@ def flatten_record(record: dict) -> dict:
     flat["metadata_triggering_actor_type"]        = ta.get("type", "")
     flat["metadata_triggering_actor_site_admin"]  = ta.get("site_admin", False)
 
-    # head_commit
     hc = meta.get("head_commit", {}) or {}
     flat["metadata_head_commit_id"]        = hc.get("id", "")
     flat["metadata_head_commit_tree_id"]   = hc.get("tree_id", "")
     flat["metadata_head_commit_message"]   = hc.get("message", "")
     flat["metadata_head_commit_timestamp"] = hc.get("timestamp", "")
-    author = hc.get("author", {}) or {}
+    author    = hc.get("author", {}) or {}
+    committer = hc.get("committer", {}) or {}
     flat["metadata_head_commit_author_name"]     = author.get("name", "")
     flat["metadata_head_commit_author_email"]    = author.get("email", "")
-    committer = hc.get("committer", {}) or {}
     flat["metadata_head_commit_committer_name"]  = committer.get("name", "")
     flat["metadata_head_commit_committer_email"] = committer.get("email", "")
 
-    # repository
-    repo = meta.get("repository", {}) or {}
-    flat["metadata_repository_id"]          = repo.get("id", None)
-    flat["metadata_repository_node_id"]     = repo.get("node_id", "")
-    flat["metadata_repository_name"]        = repo.get("name", "")
-    flat["metadata_repository_full_name"]   = repo.get("full_name", "")
-    flat["metadata_repository_private"]     = repo.get("private", False)
-    flat["metadata_repository_description"] = repo.get("description", "")
-    flat["metadata_repository_fork"]        = repo.get("fork", False)
+    repo   = meta.get("repository", {}) or {}
     rowner = repo.get("owner", {}) or {}
+    flat["metadata_repository_id"]                = repo.get("id", None)
+    flat["metadata_repository_node_id"]           = repo.get("node_id", "")
+    flat["metadata_repository_name"]              = repo.get("name", "")
+    flat["metadata_repository_full_name"]         = repo.get("full_name", "")
+    flat["metadata_repository_private"]           = repo.get("private", False)
+    flat["metadata_repository_description"]       = repo.get("description", "")
+    flat["metadata_repository_fork"]              = repo.get("fork", False)
     flat["metadata_repository_owner_login"]       = rowner.get("login", "")
     flat["metadata_repository_owner_id"]          = rowner.get("id", None)
     flat["metadata_repository_owner_node_id"]     = rowner.get("node_id", "")
@@ -201,16 +173,15 @@ def flatten_record(record: dict) -> dict:
     flat["metadata_repository_owner_type"]        = rowner.get("type", "")
     flat["metadata_repository_owner_site_admin"]  = rowner.get("site_admin", False)
 
-    # head_repository
-    hrepo = meta.get("head_repository", {}) or {}
-    flat["metadata_head_repository_id"]          = hrepo.get("id", None)
-    flat["metadata_head_repository_node_id"]     = hrepo.get("node_id", "")
-    flat["metadata_head_repository_name"]        = hrepo.get("name", "")
-    flat["metadata_head_repository_full_name"]   = hrepo.get("full_name", "")
-    flat["metadata_head_repository_private"]     = hrepo.get("private", False)
-    flat["metadata_head_repository_description"] = hrepo.get("description", "")
-    flat["metadata_head_repository_fork"]        = hrepo.get("fork", False)
+    hrepo  = meta.get("head_repository", {}) or {}
     hrowner = hrepo.get("owner", {}) or {}
+    flat["metadata_head_repository_id"]                = hrepo.get("id", None)
+    flat["metadata_head_repository_node_id"]           = hrepo.get("node_id", "")
+    flat["metadata_head_repository_name"]              = hrepo.get("name", "")
+    flat["metadata_head_repository_full_name"]         = hrepo.get("full_name", "")
+    flat["metadata_head_repository_private"]           = hrepo.get("private", False)
+    flat["metadata_head_repository_description"]       = hrepo.get("description", "")
+    flat["metadata_head_repository_fork"]              = hrepo.get("fork", False)
     flat["metadata_head_repository_owner_login"]       = hrowner.get("login", "")
     flat["metadata_head_repository_owner_id"]          = hrowner.get("id", None)
     flat["metadata_head_repository_owner_node_id"]     = hrowner.get("node_id", "")
@@ -218,103 +189,61 @@ def flatten_record(record: dict) -> dict:
     flat["metadata_head_repository_owner_type"]        = hrowner.get("type", "")
     flat["metadata_head_repository_owner_site_admin"]  = hrowner.get("site_admin", False)
 
-    # log_* features
-    logs = record.get("logs", {}) or {}
-    flat["log_num_jobs"]            = logs.get("num_jobs", 0)
-    flat["log_total_steps"]         = logs.get("total_steps", 0)
-    flat["log_total_duration_sec"]  = logs.get("total_duration_sec", 0.0)
-    flat["log_shell_steps"]         = logs.get("shell_steps", 0)
-    flat["log_action_steps"]        = logs.get("action_steps", 0)
-    flat["log_error_steps"]         = logs.get("error_steps", 0)
-    flat["log_total_lines"]         = logs.get("total_lines", 0)
-    flat["log_has_linux"]           = int(logs.get("has_linux", False))
-    flat["log_has_macos"]           = int(logs.get("has_macos", False))
-    flat["log_has_windows"]         = int(logs.get("has_windows", False))
-    flat["log_num_os_types"]        = logs.get("num_os_types", 0)
-    flat["log_early3_total_dur"]    = logs.get("early3_total_dur", 0.0)
-    flat["log_early3_max_dur"]      = logs.get("early3_max_dur", 0.0)
-    flat["log_early3_min_dur"]      = logs.get("early3_min_dur", 0.0)
-    flat["log_early3_shell_count"]  = logs.get("early3_shell_count", 0)
-    flat["log_early3_action_count"] = logs.get("early3_action_count", 0)
-    flat["log_early3_error_count"]  = logs.get("early3_error_count", 0)
-    flat["log_early3_avg_dur"]      = logs.get("early3_avg_dur", 0.0)
-    flat["log_error_rate"]          = logs.get("error_rate", 0.0)
-    flat["log_shell_ratio"]         = logs.get("shell_ratio", 0.0)
-    flat["log_avg_step_dur"]        = logs.get("avg_step_dur", 0.0)
-    flat["log_max_step_dur"]        = logs.get("max_step_dur", 0.0)
-
     return flat
-
 
 def parse_json_gz(max_rows=None):
     log(f"Parsing {LOCAL_GZ} ...")
-    rows = []
+    rows  = []
     count = 0
-
     with gzip.open(LOCAL_GZ, "rt", encoding="utf-8") as f:
-        # Try as JSON array first, then fall back to JSON-Lines
         first_char = f.read(1)
         f.seek(0)
-
         if first_char == "[":
-            # Standard JSON array
             data = json.load(f)
             total = len(data)
-            log(f"  JSON array with {total:,} records")
+            log(f"  JSON array — {total:,} records")
             for record in data:
                 rows.append(flatten_record(record))
                 count += 1
-                show_progress(count, total)
+                if count % 50000 == 0:
+                    log(f"  Parsed {count:,} / {total:,}")
                 if max_rows and count >= max_rows:
                     break
         else:
-            # JSON-Lines (one object per line)
             log("  Detected JSON-Lines format")
             for line in f:
                 line = line.strip()
                 if not line:
                     continue
                 try:
-                    record = json.loads(line)
-                    rows.append(flatten_record(record))
+                    rows.append(flatten_record(json.loads(line)))
                     count += 1
-                    show_progress(count)
+                    if count % 50000 == 0:
+                        log(f"  Parsed {count:,} rows")
                     if max_rows and count >= max_rows:
                         break
                 except json.JSONDecodeError:
                     continue
-
     df = pd.DataFrame(rows)
-
-    # Ensure all expected columns exist (fill missing with None)
     for col in KEEP_COLUMNS:
         if col not in df.columns:
             df[col] = None
     df = df[KEEP_COLUMNS]
-
-    log(f"Parsed {len(df):,} rows with {df.shape[1]} columns")
+    log(f"Parsed {len(df):,} rows x {df.shape[1]} columns")
     return df
-
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--sample", type=int, default=None,
-                        help="Only use first N rows (for testing)")
-    parser.add_argument("--skip-download", action="store_true",
-                        help="Skip download, re-parse existing file")
+    parser.add_argument("--sample", type=int, default=None)
+    parser.add_argument("--skip-download", action="store_true")
     args = parser.parse_args()
-
     os.makedirs("data", exist_ok=True)
-
     if not args.skip_download:
         download_file()
-
     df = parse_json_gz(max_rows=args.sample)
-
     df.to_csv(OUTPUT_CSV, index=False)
-    log(f"Saved {len(df):,} rows → {OUTPUT_CSV}")
+    log(f"Saved {len(df):,} rows to {OUTPUT_CSV}")
     log("fetch_data.py complete.")
-
 
 if __name__ == "__main__":
     main()
