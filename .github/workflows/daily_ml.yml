@@ -35,9 +35,6 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: List all files
-        run: ls -la
-
       - name: Cache runs.json.gz
         id: cache-zenodo
         uses: actions/cache@v4
@@ -52,6 +49,9 @@ jobs:
           else
             python3 fetch_data.py
           fi
+
+      - name: Debug JSON structure
+        run: python3 debug_json.py
 
       - name: Verify data integrity
         run: python3 verify_output.py
