@@ -1,4 +1,4 @@
-name: Daily ML Pipeline – GHALogs
+name: Daily ML Pipeline - GHALogs
 
 on:
   schedule:
@@ -35,6 +35,9 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: List all files
+        run: ls -la
+
       - name: Cache runs.json.gz
         id: cache-zenodo
         uses: actions/cache@v4
@@ -45,29 +48,21 @@ jobs:
       - name: Fetch and parse data
         run: |
           if [ -n "${{ github.event.inputs.sample_rows }}" ]; then
-            echo "Running in SAMPLE mode: ${{ github.event.inputs.sample_rows }} rows"
-            python fetch_data.py --sample ${{ github.event.inputs.sample_rows }}
+            python3 fetch_data.py --sample ${{ github.event.inputs.sample_rows }}
           else
-            echo "Running on FULL dataset"
-            python fetch_data.py
+            python3 fetch_data.py
           fi
 
-      - name: Verify data integrity (first 5 rows — 170 checks)
-        run: python verify_output.py
+      - name: Verify data integrity
+        run: python3 verify_output.py
 
       - name: Run ML pipeline
-        run: python ml_pipeline.py
+        run: python3 ml_pipeline.py
 
       - name: Print summary
         run: |
-          echo "===== OUTPUTS ====="
           ls -lh outputs/
-          echo ""
-          echo "===== METRICS ====="
           cat outputs/metrics.json
-          echo ""
-          echo "===== SUMMARY REPORT ====="
-          cat outputs/summary_report.md
 
       - name: Upload outputs as artifacts
         uses: actions/upload-artifact@v4
