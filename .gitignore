@@ -1,0 +1,4 @@
+data/runs.json.gz
+data/runs_200_2.csv
+__pycache__/
+*.pyc

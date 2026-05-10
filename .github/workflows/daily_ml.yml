@@ -1,0 +1,87 @@
+name: Daily ML Pipeline – GHALogs
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      sample_rows:
+        description: 'Limit rows for testing (leave blank for full dataset)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  ml-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Cache runs.json.gz
+        id: cache-zenodo
+        uses: actions/cache@v4
+        with:
+          path: data/runs.json.gz
+          key: zenodo-ghalogs-v1-0-1
+
+      - name: Fetch and parse data
+        run: |
+          if [ -n "${{ github.event.inputs.sample_rows }}" ]; then
+            echo "Running in SAMPLE mode: ${{ github.event.inputs.sample_rows }} rows"
+            python fetch_data.py --sample ${{ github.event.inputs.sample_rows }}
+          else
+            echo "Running on FULL dataset"
+            python fetch_data.py
+          fi
+
+      - name: Verify data integrity (first 5 rows — 170 checks)
+        run: python verify_output.py
+
+      - name: Run ML pipeline
+        run: python ml_pipeline.py
+
+      - name: Print summary
+        run: |
+          echo "===== OUTPUTS ====="
+          ls -lh outputs/
+          echo ""
+          echo "===== METRICS ====="
+          cat outputs/metrics.json
+          echo ""
+          echo "===== SUMMARY REPORT ====="
+          cat outputs/summary_report.md
+
+      - name: Upload outputs as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ml-outputs-${{ github.run_number }}-${{ github.run_attempt }}
+          path: outputs/
+          retention-days: 30
+
+      - name: Commit and push outputs
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add outputs/
+          git diff --staged --quiet \
+            && echo "No changes to commit." \
+            || git commit -m "chore: ML run $(date +'%Y-%m-%d') [skip ci]"
+          git push
